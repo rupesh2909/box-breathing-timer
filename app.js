@@ -100,16 +100,23 @@ function updatePhase() {
 }
 
 function moveBallToCorner(phaseIndex) {
-  const squareSize = 200; // px
-  const ballSize = 20; // px
+
+  const square = document.querySelector(".square");
+  const ballSize = ball.offsetWidth;
   const duration = interval; // seconds
 
+
+  const squareWidth = square.clientWidth;
+  const squareHeight = square.clientHeight;
+
+
   const positions = [
-    { top: 0, left: 0 },                             // Top-left (Inhale)
-    { top: 0, left: squareSize - ballSize },         // Top-right (Hold)
-    { top: squareSize - ballSize, left: squareSize - ballSize }, // Bottom-right (Exhale)
-    { top: squareSize - ballSize, left: 0 }          // Bottom-left (Hold)
+    { top: 0, left: 0 },                                         // Top-left
+    { top: 0, left: squareWidth - ballSize },                    // Top-right
+    { top: squareHeight - ballSize, left: squareWidth - ballSize }, // Bottom-right
+    { top: squareHeight - ballSize, left: 0 }                    // Bottom-left
   ];
+
 
   const current = positions[phaseIndex];  
 
