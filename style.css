@@ -1,80 +1,188 @@
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  background-color: #f0f4f8;
+/* Reset and base styles */
+html, body {
   margin: 0;
-  padding: 10px;
+  padding: 0;
+  height: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden; /* Prevent vertical scroll */
 }
+
+body {
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(to right, #e0f7fa, #f1f8e9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #333;
+}
+
+/* Container */
 
 .container {
-  max-width: 100%;
-  margin: auto;
-  padding: 10px;
+  position: relative; /* Needed for absolute positioning of stats */
+  width: 100%;
+  max-width: 500px;
+  height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: #ffffffcc;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+
+/* Header */
+h1 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  color: #2e7d32;
+}
+
+/* Controls */
 .controls {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
   margin-bottom: 20px;
 }
 
-.control-group,
-.button-group {
+.control-group {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  align-items: center;
   gap: 10px;
 }
 
 input[type="number"] {
-  width: 100px;
-  padding: 10px;
+  width: 80px;
+  padding: 8px;
   font-size: 16px;
+  border: 2px solid #4caf50;
+  border-radius: 6px;
+  outline: none;
 }
 
-button {
-  padding: 10px 16px;
-  font-size: 16px;
-  min-width: 100px;
+.button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
+.btn {
+  padding: 10px 20px;
+  font-size: 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.btn:hover {
+  transform: scale(1.05);
+}
+
+.primary {
+  background-color: #4caf50;
+  color: white;
+}
+
+.secondary {
+  background-color: #2196f3;
+  color: white;
+}
+
+.danger {
+  background-color: #f44336;
+  color: white;
+}
+
+/* Breathing square */
 .square-container {
-  width: 100vw;               /* Responsive width */
-  aspect-ratio: 1 / 1;       /* Ensures square shape */
-  margin: 10px auto;         /* Horizontally center */
+  width: 100%;
+  max-width: 250px;
+  aspect-ratio: 1 / 1;
+  margin: 10px auto;
   position: relative;
-  max-width: 200px;          /* Prevents it from being too large on desktop */
-  max-height: 200px;
 }
+
+
 
 .square {
   width: 100%;
   height: 100%;
-  border: 4px solid #4caf50;
+  border: 4px dashed #4caf50;
+  border-radius: 12px;
   position: relative;
-  box-sizing: border-box;
+  background-color: #e8f5e9;
 }
 
+
+
 .ball {
-  width: 7%;
-  height: 7%;
+  width: 10%;
+  height: 10%;
   background-color: #2196f3;
   border-radius: 50%;
   position: absolute;
+  transition: all 0.3s ease-in-out;
 }
 
+/* Phase label */
 .phase-label {
-  margin-top: 20px;
+  margin-top: 10px;
   font-size: clamp(18px, 5vw, 24px);
   font-weight: bold;
+  color: #2e7d32;
 }
 
+/* Stats */
+
+
+
+
+
 .stats {
-  margin-top: 20px;
-  font-size: 18px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: left;
+  font-size: 14px;
+  background-color: #ffffffcc;
+  padding: 8px 10px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
+  max-width: 220px; /* Increased from 150px */
+  white-space: nowrap; /* Prevent line wrapping */
+}
+
+
+
+
+
+
+
+
+.stats p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+
+/* Responsive fallback for small screens */
+@media (max-height: 600px) {
+  body {
+    overflow-y: auto;
+  }
+
+  .container {
+    height: auto;
+    padding: 10px;
+  }
 }
