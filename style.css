@@ -1,0 +1,64 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background-color: #f0f4f8;
+  margin: 0;
+  padding: 20px;
+}
+
+.container {
+  max-width: 500px;
+  margin: auto;
+}
+
+.controls {
+  margin-bottom: 20px;
+}
+
+input[type="number"] {
+  width: 60px;
+  padding: 5px;
+  margin: 0 10px;
+}
+
+button {
+  padding: 8px 8px;
+  margin: 5px;
+  font-size: 16px;
+}
+
+.square-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 40px auto;
+}
+
+.square {
+  width: 100%;
+  height: 100%;
+  border: 4px solid #4caf50;
+  position: relative;
+}
+
+
+.ball {
+  width: 20px;
+  height: 20px;
+  background-color: #2196f3;
+  border-radius: 50%;
+  position: absolute;
+}
+
+
+.phase-label {
+  margin-top: 20px;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+
+.stats {
+  margin-top: 20px;
+  font-size: 18px;
+}
