@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">  
+  <title>Compact Breathing Timer</title>
+  <link rel="stylesheet" href="style_New.css">
+  <script src="app_New.js"></script>
+
+</head>
+<body>
+  <div class="main-container">
+    <h1 class="title">🌬️ Breathing Timer 
+      <button id="settingsToggle" class="settings-btn">⚙️</button>
+    </h1>
+
+    <!-- SETTINGS DISPLAY -->
+    <div class="settings-display">
+      <div class="current-settings">
+        <div class="setting-item">
+          <span class="setting-label">Type</span>
+          <span class="setting-value" id="currentType">Square</span>
+        </div>
+        <div class="setting-item setting-intervals">
+          <span class="setting-label">Intervals</span>
+          <div class="setting-value interval-list-display" id="currentIntervals">—</div>
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">Total Rounds</span>
+          <span class="setting-value" id="totalRounds">5</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUTTONS -->
+    <div class="buttons-row">
+      <button class="btn btn-start" id="startButton">Start</button>
+      <button class="btn btn-pause" id="pauseButton" disabled>Pause</button>
+      <button class="btn btn-stop" id="stopButton" disabled>Stop</button>
+      <button class="btn btn-reset" id="resetButton">Reset</button>
+    </div>
+
+    <!-- SHAPE AREA -->
+    <div class="shape-section">
+      <div class="shape-container" id="shapeContainer">
+        <div class="moving-ball pulse-animation" id="movingBall"></div>
+
+        <!-- SVG shape replaces CSS border triangle -->
+        <svg id="shapeSvg" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+          <path id="shapePath" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="phase-text" id="phaseText">Ready to breathe</div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-row">
+      <div class="stat-item">
+        <span class="stat-title">Time</span>
+        <span class="stat-value" id="timeValue">0:00</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-title">Rounds</span>
+        <span class="stat-value" id="roundsValue">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-title">Interval</span>
+        <span class="stat-value" id="intervalValue">0s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY -->
+  <div id="overlay" class="overlay"></div>
+
+  <!-- SIDE SETTINGS PANEL -->
+  <div id="settingsPanel" class="settings-panel">
+    <div class="settings-header">
+      <h3>⚙️ Settings</h3>
+      <button id="closeSettings" class="close-btn">✕</button>
+    </div>
+    
+    <div class="input-item">
+      <label class="input-label">Breathing Type</label>
+      <select class="select-field" id="typeSelect">
+        <option value="3">Triangle</option>
+        <option value="4" selected>Square</option>
+      </select>
+    </div>
+
+    <div class="intervals-container">
+      <h4>Intervals</h4>
+      <div class="interval-headings">
+        <span>No. of Rounds</span>
+        <span>Round Duration</span>
+      </div>
+      <div id="intervalList"></div>
+      <button class="btn-add" id="addIntervalBtn">+ Add Interval</button>
+      <button class="btn-add" id="saveSettingsBtn">💾 Save Settings</button>
+    </div>
+  </div>
+  <audio src="beep.mp3" id="beep"></audio>
+
+</body>
+</html>
