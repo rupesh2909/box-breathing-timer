@@ -162,26 +162,86 @@ function playImmediateBeep(durationMs = 1800, freq = 440){
 }
 
 /* silent loop to reduce throttling */
+/* REPLACE startSilentLoop() and stopSilentLoop() with this mobile-friendly version.
+   Uses a very-low-volume oscillator (not absolute silence) so mobile browsers
+   won't categorize it as "silent" and throttle the audio thread. */
 function startSilentLoop(){
-  const ctx = ensureAudioContext(); if(!ctx) return;
+  const ctx = ensureAudioContext();
+  if(!ctx) return;
   try {
+    // if already running, do nothing
     if(silentLoopSource) return;
-    const sr = ctx.sampleRate || 44100;
-    const buf = ctx.createBuffer(1, sr, sr);
-    const arr = buf.getChannelData(0);
-    for(let i=0;i<arr.length;i++) arr[i] = 0.0;
-    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
-    const g = ctx.createGain(); g.gain.value = 0.00001;
-    src.connect(g); g.connect(ctx.destination);
-    src.start(0);
-    silentLoopSource = { src, g };
-    showStatus('Silent audio loop started', true);
-  } catch(e){ console.warn('silent loop failed', e); }
+
+    // resume AudioContext if suspended (defensive)
+    if(ctx.state === 'suspended'){
+      ctx.resume().catch(()=>{ /* ignore */ });
+    }
+
+    // Create a low-frequency oscillator with extremely low gain.
+    // This is intentionally audible at a hair above silence so mobile audio subsystems stay active.
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    // Oscillator: very low frequency & sine to minimize perceptible sound
+    osc.type = 'sine';
+    osc.frequency.value = 37; // low, non-annoying frequency
+
+    // Gain: tiny but not zero. Adjust if you can hear it on your device.
+    // 0.001 is generally inaudible on most devices but considered non-silent by the engine.
+    gain.gain.value = 0.001;
+
+    // Connect and loop forever
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Start immediately
+    const now = ctx.currentTime;
+    osc.start(now);
+
+    // Keep reference so we can stop later
+    silentLoopSource = { osc, gain };
+
+    showStatus('Low-volume audio loop started (keeps audio active on mobile)', true);
+  } catch (e) {
+    console.warn('startSilentLoop failed, falling back to silent buffer', e);
+    // fallback to the older silent-buffer approach
+    try {
+      const sampleRate = (ctx && ctx.sampleRate) ? ctx.sampleRate : 44100;
+      const frameCount = sampleRate * 1;
+      const buffer = ctx.createBuffer(1, frameCount, sampleRate);
+      const data = buffer.getChannelData(0);
+      for(let i=0;i<frameCount;i++) data[i] = 0.0;
+      const src = ctx.createBufferSource(); src.buffer = buffer; src.loop = true;
+      const fg = ctx.createGain(); fg.gain.value = 0.00001;
+      src.connect(fg); fg.connect(ctx.destination);
+      src.start(0);
+      silentLoopSource = { src, gain: fg };
+      showStatus('Fallback silent audio loop started', true);
+    } catch(err){ console.warn('fallback silent loop failed', err); }
+  }
 }
+
 function stopSilentLoop(){
-  try { if(silentLoopSource){ silentLoopSource.src.stop(); silentLoopSource = null; showStatus('Silent audio loop stopped', true); } }
-  catch(e){ }
+  try {
+    if(!silentLoopSource) return;
+    // two possible shapes: {osc,gain} or {src,gain}
+    if(silentLoopSource.osc){
+      try { silentLoopSource.osc.stop(); } catch(e) {}
+      try { silentLoopSource.osc.disconnect(); } catch(e) {}
+    }
+    if(silentLoopSource.src){
+      try { silentLoopSource.src.stop(); } catch(e) {}
+      try { silentLoopSource.src.disconnect(); } catch(e) {}
+    }
+    try { if(silentLoopSource.gain) silentLoopSource.gain.disconnect(); } catch(e){}
+    silentLoopSource = null;
+    showStatus('Silent audio loop stopped', true);
+  } catch(e){
+    console.warn('stopSilentLoop failed', e);
+    silentLoopSource = null;
+  }
 }
+
 
 /* ---------------------------
    Scheduled beeps for timer-relative hits
