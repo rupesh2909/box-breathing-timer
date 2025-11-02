@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Timer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Poppins", system-ui, sans-serif;
+      background: linear-gradient(135deg,#0f172a,#0ea5e9);
+      color: #fff;
+      padding: 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 40px rgba(2,6,23,0.6);
+      text-align: center;
+    }
+    h1 { margin: 0 0 10px 0; font-size: 1.25rem; }
+    .display {
+      font-size: 3.5rem;
+      font-weight: 600;
+      margin: 18px 0;
+      letter-spacing: 2px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+    .control-block { min-width: 120px; }
+    input[type="number"] {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      min-width: 110px;
+      text-align: center;
+      font-size: 1rem;
+    }
+    label.small { font-size: 0.85rem; display:block; margin-bottom:6px; opacity:0.95;}
+    button {
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .btn-start { background: #10b981; color: white; }
+    .btn-pause { background: #f59e0b; color: white; }
+    .btn-reset { background: #ef4444; color: white; }
+    .btn-save { background: #3b82f6; color: white; }
+    .btn-clear { background: #6b7280; color: white; }
+    .status { margin-top:8px; font-size:0.9rem; opacity:0.95; }
+    @media (max-width:420px) {
+      .display { font-size: 2.6rem; }
+      input[type="number"] { min-width: 92px; }
+      button { flex: 1 1 45%; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card" role="application" aria-label="Timer">
+    <h1>Digital Timer (MM:SS)</h1>
+    <div id="display" class="display" aria-live="polite">00:00</div>
+
+    <div class="controls">
+      <div class="control-block">
+        <label class="small" for="setMinutes">Initial minutes</label>
+        <input id="setMinutes" type="number" min="0" step="1" placeholder="Minutes (e.g., 5)">
+      </div>
+
+      <div class="control-block">
+        <label class="small" for="beepSeconds">Beep seconds (0 = off)</label>
+        <input id="beepSeconds" type="number" min="0" max="59" step="1" placeholder="e.g., 3">
+      </div>
+
+      <div class="control-block">
+        <label class="small" for="volume">Volume (0–100)</label>
+        <input id="volume" type="number" min="0" max="100" step="1" value="80" style="width:110px; text-align:center;">
+      </div>
+    </div>
+
+    <div class="controls" style="margin-bottom:8px;">
+      <button id="setBtn" class="btn-save">Set</button>
+      <button id="startBtn" class="btn-start">Start</button>
+      <button id="pauseBtn" class="btn-pause">Pause</button>
+      <button id="resetBtn" class="btn-reset">Reset</button>
+    </div>
+
+    <div class="controls" style="margin-bottom:6px;">
+      <button id="saveBtn" class="btn-save">Save Settings</button>
+      <button id="clearBtn" class="btn-clear">Clear Saved Settings</button>
+    </div>
+
+    <div id="status" class="status" aria-live="polite"></div>
+
+  </div>
+
+  <script>
+    // -----------------------
+    // State & DOM references
+    // -----------------------
+    let totalSeconds = 0;
+    let timerId = null;
+    let isRunning = false;
+    let audioCtx = null;
+
+    const display = document.getElementById('display');
+    const setMinutesInput = document.getElementById('setMinutes');
+    const beepSecondsInput = document.getElementById('beepSeconds');
+    const volumeInput = document.getElementById('volume');
+
+    const setBtn = document.getElementById('setBtn');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusEl = document.getElementById('status');
+
+    const STORAGE_KEY = 'responsiveTimerSettings_v1';
+
+    // -----------------------
+    // Audio (long beep)
+    // -----------------------
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+          console.warn('WebAudio not available:', e);
+          audioCtx = null;
+        }
+      }
+      return audioCtx;
+    }
+
+    // Play long beep (default ~2000ms)
+    function playBeep(duration = 1000, frequency = 440) {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
+      const vol = Math.max(0, Math.min(100, parseInt(volumeInput.value || 80)));
+      const gain = ctx.createGain();
+      gain.gain.value = Math.max(0.0001, vol / 150); // safety lower bound
+      gain.connect(ctx.destination);
+
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = frequency;
+      osc.connect(gain);
+
+      // Start
+      const startTime = ctx.currentTime;
+      osc.start(startTime);
+
+      // Stop after duration, with smooth fade-out
+      const stopTime = startTime + (duration / 1000);
+      // Fade out for the last 150ms
+      const fadeStart = Math.max(startTime, stopTime - 0.15);
+      gain.gain.setValueAtTime(gain.gain.value, startTime);
+      gain.gain.linearRampToValueAtTime(gain.gain.value, fadeStart);
+      gain.gain.linearRampToValueAtTime(0.0001, stopTime);
+
+      osc.stop(stopTime + 0.02);
+    }
+
+    // -----------------------
+    // Display / Timer logic
+    // -----------------------
+    function updateDisplay() {
+      const m = Math.floor(totalSeconds / 60);
+      const s = totalSeconds % 60;
+      display.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    }
+
+    function tick() {
+      if (totalSeconds <= 0) {
+        clearInterval(timerId);
+        timerId = null;
+        isRunning = false;
+        updateDisplay();
+        // final long beep and notification
+        playBeep(2500, 520);
+        // small delay so beep can start before alert (better UX)
+        setTimeout(() => alert("⏰ Time's up!"), 200);
+        return;
+      }
+
+      totalSeconds -= 1;
+      updateDisplay();
+
+      // beep logic: when remaining seconds WITHIN CURRENT MINUTE equals configured beepSeconds
+      const beepSec = Number(beepSecondsInput.value) || 0;
+      if (beepSec > 0) {
+        const secInMin = totalSeconds % 60;
+        if (secInMin === beepSec) {
+          // play long beep (approx 2 seconds). We ensure audio context exists on user gesture earlier.
+          playBeep(2000, 440);
+        }
+      }
+    }
+
+    function startTimer() {
+      // create audio ctx on user gesture to satisfy browser policies
+      ensureAudioContext();
+      if (isRunning) return;
+      if (totalSeconds <= 0) {
+        alert("Set an initial time (minutes) greater than 0 before starting.");
+        return;
+      }
+      isRunning = true;
+      // Use setInterval for 1s ticks
+      timerId = setInterval(tick, 1000);
+      status('Timer started');
+    }
+
+    function pauseTimer() {
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+      isRunning = false;
+      status('Timer paused');
+    }
+
+    function resetTimer() {
+      pauseTimer();
+      totalSeconds = 0;
+      updateDisplay();
+      status('Timer reset');
+    }
+
+    function setInitialTime() {
+      const mins = parseInt(setMinutesInput.value);
+      if (isNaN(mins) || mins < 0) {
+        alert("Please enter valid minutes (0 or greater).");
+        return;
+      }
+      totalSeconds = Math.max(0, Math.floor(mins) * 60);
+      updateDisplay();
+      status(`Initial time set to ${mins} minute(s)`);
+    }
+
+    // -----------------------
+    // Save / Load settings
+    // -----------------------
+    function saveSettings() {
+      const mins = parseInt(setMinutesInput.value) || 0;
+      const beep = parseInt(beepSecondsInput.value) || 0;
+      const vol = parseInt(volumeInput.value) || 80;
+      const payload = { minutes: mins, beepSeconds: beep, volume: vol, savedAt: new Date().toISOString() };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        status('Settings saved');
+      } catch (e) {
+        console.error('Failed to save settings', e);
+        status('Error: could not save settings (storage full or restricted).');
+      }
+    }
+
+    function clearSavedSettings() {
+      localStorage.removeItem(STORAGE_KEY);
+      status('Saved settings cleared');
+    }
+
+    function loadSettingsIfPresent() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          status('No saved settings found');
+          return;
+        }
+        const cfg = JSON.parse(raw);
+        // Populate inputs
+        if (typeof cfg.minutes === 'number') setMinutesInput.value = cfg.minutes;
+        if (typeof cfg.beepSeconds === 'number') beepSecondsInput.value = cfg.beepSeconds;
+        if (typeof cfg.volume === 'number') volumeInput.value = cfg.volume;
+        // Apply minutes to timer automatically
+        totalSeconds = Math.max(0, Math.floor(cfg.minutes) * 60);
+        updateDisplay();
+        status(`Loaded saved settings (saved at ${new Date(cfg.savedAt).toLocaleString()})`);
+      } catch (e) {
+        console.error('Failed to load saved settings', e);
+        status('Error loading saved settings');
+      }
+    }
+
+    // -----------------------
+    // Helpers
+    // -----------------------
+    function status(msg) {
+      statusEl.textContent = msg;
+      // clear after a few seconds for UX
+      clearTimeout(status._t);
+      status._t = setTimeout(() => {
+        if (statusEl.textContent === msg) statusEl.textContent = '';
+      }, 4000);
+    }
+
+    // -----------------------
+    // Events
+    // -----------------------
+    setBtn.addEventListener('click', () => {
+      setInitialTime();
+    });
+
+    startBtn.addEventListener('click', () => {
+      // ensure user gesture allowed audio
+      ensureAudioContext();
+      startTimer();
+    });
+
+    pauseBtn.addEventListener('click', pauseTimer);
+    resetBtn.addEventListener('click', resetTimer);
+    saveBtn.addEventListener('click', saveSettings);
+    clearBtn.addEventListener('click', () => {
+      clearSavedSettings();
+      // also clear inputs
+      setMinutesInput.value = '';
+      beepSecondsInput.value = '';
+      volumeInput.value = 80;
+      // reset display only if not running
+      if (!isRunning) { totalSeconds = 0; updateDisplay(); }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ' && !/input|textarea/i.test(document.activeElement.tagName)) {
+        e.preventDefault();
+        if (isRunning) pauseTimer(); else startTimer();
+      }
+      if (e.key.toLowerCase() === 'r') resetTimer();
+    });
+
+    // -----------------------
+    // Init: load saved settings (if any)
+    // -----------------------
+    window.addEventListener('load', () => {
+      loadSettingsIfPresent();
+      updateDisplay();
+    });
+  </script>
+</body>
+</html>
