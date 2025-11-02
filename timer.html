@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Timer — Wake Lock + PiP (Persistent Status)</title>
+<title>Timer</title>
 <style>
   *{box-sizing:border-box}
   body{
@@ -30,42 +30,16 @@
   .hint{font-size:0.85rem;opacity:0.9;margin-top:8px}
   @media (max-width:480px){.display{font-size:2.6rem}input[type=number]{min-width:92px}button{flex:1 1 45%}}
   /* hidden helpers kept attached (not display:none) */
-  video#_wakelock_fallback, video#_pip_video{position:fixed;right:6px;bottom:6px;width:160px;height:90px;opacity:0.02;z-index:0}
+  /* keep the video small and nearly invisible but attached; some browsers require it attached and playing */
+  video#_pip_video, video#_wakelock_fallback{
+    position:fixed; right:6px; bottom:6px; width:160px; height:90px; opacity:0.02; z-index:0;
+  }
   canvas#_pip_canvas{display:none}
-
-  /* Persistent status bar pinned to bottom */
-  .status-bar {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-    background: rgba(2,6,23,0.9);
-    color: #e6f0ff;
-    border-radius: 10px;
-    padding: 10px 14px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-    font-size: 0.95rem;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    z-index: 9999;
-  }
-  .status-text { flex: 1; word-break: break-word; }
-  .status-actions button {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.12);
-    color: #fff;
-    padding: 6px 8px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-  .status-actions button:hover { background: rgba(255,255,255,0.04); }
 </style>
 </head>
 <body>
   <div class="card" role="application" aria-label="Timer">
-    <h1>Timer (MM:SS) — Wake Lock & PiP (Persistent Status)</h1>
+    <h1>Timer (MM:SS)</h1>
     <div id="display" class="display" aria-live="polite">00:00</div>
 
     <div class="controls" aria-hidden="false">
@@ -98,29 +72,12 @@
       <button id="wakeBtn" class="btn-wake">Enable Wake Lock</button>
       <button id="pipBtn" class="btn-pip">Enable PiP</button>
     </div>
-
-    <div class="controls" style="margin-top:6px">
-      <button id="diagBtn" class="btn-clear">Run Diagnostics</button>
-    </div>
-
-    <div class="hint">
-      Notes: Wake Lock & PiP require HTTPS (or localhost) and a user tap to enable. If PiP doesn't show, check Android Settings → Apps → Chrome → Picture-in-picture allowed.
-    </div>
   </div>
 
-  <!-- Hidden helper elements (attached but visually tiny) -->
+  <!-- hidden helpers kept attached and playing as needed -->
   <canvas id="_pip_canvas" width="320" height="180"></canvas>
   <video id="_pip_video" playsinline muted></video>
   <video id="_wakelock_fallback" playsinline muted loop></video>
-
-  <!-- Persistent status bar -->
-  <div class="status-bar" role="status" aria-live="polite">
-    <div class="status-text" id="statusText">Ready</div>
-    <div class="status-actions">
-      <button id="clearStatusBtn" title="Clear status">Clear</button>
-      <button id="copyStatusBtn" title="Copy status">Copy</button>
-    </div>
-  </div>
 
 <script>
 /* ---------------------------
@@ -140,18 +97,13 @@ const saveBtn = document.getElementById('saveBtn');
 const clearBtn = document.getElementById('clearBtn');
 const wakeBtn = document.getElementById('wakeBtn');
 const pipBtn = document.getElementById('pipBtn');
-const diagBtn = document.getElementById('diagBtn');
-
-const statusText = document.getElementById('statusText');
-const clearStatusBtn = document.getElementById('clearStatusBtn');
-const copyStatusBtn = document.getElementById('copyStatusBtn');
 
 const pipCanvas = document.getElementById('_pip_canvas');
 const pipCanvasCtx = pipCanvas.getContext('2d');
 const pipVideo = document.getElementById('_pip_video');
 const wakelockFallbackVideo = document.getElementById('_wakelock_fallback');
 
-const STORAGE_KEY = 'timer_wakelock_pip_v2_persistentStatus';
+const STORAGE_KEY = 'timer_wakelock_pip_reentry';
 
 /* ---------------------------
    Timer state
@@ -195,19 +147,17 @@ function tick(){
   if(totalSeconds <= 0){
     clearInterval(timerId); timerId = null; isRunning = false; updateDisplay();
     playBeep(2500, 520);
-    setTimeout(()=> alert("⏰ Time's up!"), 250);
     releaseWakeLock();
-    setStatus('Timer finished');
+    console.log('Timer finished');
     return;
   }
   totalSeconds -= 1; updateDisplay();
-  // beep when seconds within minute equals configured beepSeconds
   const beepSec = Number(beepSecondsInput.value) || 0;
   if(beepSec > 0){
     const secInMin = totalSeconds % 60;
     if(secInMin === beepSec) {
       playBeep(2000, 440);
-      setStatus(`Beep at ${String(secInMin).padStart(2,'0')}s in minute`);
+      console.log(`Beep at ${secInMin}s in minute`);
     }
   }
   renderPipCanvas();
@@ -220,16 +170,22 @@ function startTimer(){
   ensureAudioContext();
   attemptPlayWakeFallback(); // user gesture
   if(isRunning) return;
-  if(totalSeconds <= 0){ alert('Set initial minutes > 0'); return; }
+  if(totalSeconds <= 0){ console.log('Set initial minutes > 0'); return; }
   isRunning = true;
   requestWakeLockIfAvailable();
   timerId = setInterval(tick, 1000);
-  setStatus('Timer started');
-  tryAutoEnterPip();
+  console.log('Timer started');
+  // ensure pipVideo stream is started so PiP can be entered later
+  startPipVideoStream().then(() => {
+    // if user previously enabled pip, try to auto-enter (may succeed or fail depending on browser)
+    if(sessionStorage.getItem('pip_allowed') === '1'){
+      tryAutoEnterPip();
+    }
+  });
 }
-function pauseTimer(){ if(timerId){ clearInterval(timerId); timerId = null } isRunning = false; setStatus('Timer paused'); releaseWakeLock(); }
-function resetTimer(){ pauseTimer(); totalSeconds = 0; updateDisplay(); setStatus('Timer reset'); }
-function setInitialTime(){ const mins = parseInt(setMinutesInput.value); if(isNaN(mins) || mins < 0){ alert('Enter valid minutes >= 0'); return; } totalSeconds = Math.max(0, Math.floor(mins) * 60); updateDisplay(); setStatus(`Set ${mins} minute(s)`); }
+function pauseTimer(){ if(timerId){ clearInterval(timerId); timerId = null } isRunning = false; console.log('Timer paused'); releaseWakeLock(); }
+function resetTimer(){ pauseTimer(); totalSeconds = 0; updateDisplay(); console.log('Timer reset'); }
+function setInitialTime(){ const mins = parseInt(setMinutesInput.value); if(isNaN(mins) || mins < 0){ console.log('Enter valid minutes'); return; } totalSeconds = Math.max(0, Math.floor(mins) * 60); updateDisplay(); console.log(`Set ${mins} minute(s)`); }
 
 /* ---------------------------
    Save / Load settings
@@ -239,46 +195,20 @@ function saveSettings(){
   const beep = parseInt(beepSecondsInput.value) || 0;
   const vol = parseInt(volumeInput.value) || 80;
   const payload = { minutes: mins, beepSeconds: beep, volume: vol, savedAt: new Date().toISOString() };
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); setStatus('Settings saved'); } catch(e){ console.error(e); setStatus('Could not save settings'); }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); console.log('Settings saved'); } catch(e){ console.error(e); console.log('Could not save settings'); }
 }
-function clearSaved(){ localStorage.removeItem(STORAGE_KEY); setStatus('Saved settings cleared'); setMinutesInput.value=''; beepSecondsInput.value=''; volumeInput.value=80; if(!isRunning){ totalSeconds=0; updateDisplay(); } }
+function clearSaved(){ localStorage.removeItem(STORAGE_KEY); console.log('Saved settings cleared'); setMinutesInput.value=''; beepSecondsInput.value=''; volumeInput.value=80; if(!isRunning){ totalSeconds=0; updateDisplay(); } }
 function loadSettings(){
   try {
-    const raw = localStorage.getItem(STORAGE_KEY); if(!raw){ setStatus('No saved settings'); return; }
+    const raw = localStorage.getItem(STORAGE_KEY); if(!raw){ console.log('No saved settings'); return; }
     const cfg = JSON.parse(raw);
     if(typeof cfg.minutes === 'number') setMinutesInput.value = cfg.minutes;
     if(typeof cfg.beepSeconds === 'number') beepSecondsInput.value = cfg.beepSeconds;
     if(typeof cfg.volume === 'number') volumeInput.value = cfg.volume;
     totalSeconds = Math.max(0, Math.floor(cfg.minutes) * 60);
     updateDisplay();
-    setStatus(`Loaded saved settings (saved at ${new Date(cfg.savedAt).toLocaleString()})`);
-  } catch(e) { console.error(e); setStatus('Error loading saved settings'); }
-}
-
-/* ---------------------------
-   Persistent Status functions
-   --------------------------- */
-// Persistent: status does NOT auto-clear now. It remains visible until user clears or it's overwritten.
-function setStatus(msg){
-  const ts = new Date().toLocaleTimeString();
-  statusText.textContent = `${ts} — ${msg}`;
-  // store last status so it persists across reloads if desired
-  try { localStorage.setItem(STORAGE_KEY + '_lastStatus', JSON.stringify({ text: statusText.textContent, at: new Date().toISOString() })); } catch(e){}
-}
-function clearStatus(){
-  statusText.textContent = 'Ready';
-  try { localStorage.removeItem(STORAGE_KEY + '_lastStatus'); } catch(e){}
-}
-function copyStatusToClipboard(){
-  const text = statusText.textContent || '';
-  if(!navigator.clipboard) {
-    // fallback
-    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); alert('Status copied'); } catch(e){ alert('Copy failed'); }
-    ta.remove();
-    return;
-  }
-  navigator.clipboard.writeText(text).then(()=> alert('Status copied'), ()=> alert('Copy failed') );
+    console.log(`Loaded saved settings (saved at ${new Date(cfg.savedAt).toLocaleString()})`);
+  } catch(e) { console.error(e); console.log('Error loading saved settings'); }
 }
 
 /* ---------------------------
@@ -310,34 +240,48 @@ async function requestWakeLockIfAvailable(){
   if('wakeLock' in navigator && typeof navigator.wakeLock.request === 'function'){
     try {
       wakeLock = await navigator.wakeLock.request('screen');
-      setStatus('Wake lock acquired');
-      wakeLock.addEventListener('release', () => { setStatus('Wake lock released'); wakeLock = null; });
+      console.log('Wake lock acquired');
+      wakeLock.addEventListener('release', () => { console.log('Wake lock released'); wakeLock = null; });
       document.addEventListener('visibilitychange', handleVisibilityChange);
     } catch(err){
       console.warn('Wake Lock request failed:', err);
-      setStatus('Wake lock unavailable — using fallback');
+      console.log('Wake lock unavailable — using fallback');
       attemptPlayWakeFallback();
     }
   } else {
-    setStatus('Wake Lock API not supported — using fallback');
+    console.log('Wake Lock API not supported — using fallback');
     attemptPlayWakeFallback();
   }
 }
 
 async function handleVisibilityChange(){
-  if(document.visibilityState === 'visible' && isRunning){
-    if(!wakeLock && 'wakeLock' in navigator && typeof navigator.wakeLock.request === 'function'){
-      try { wakeLock = await navigator.wakeLock.request('screen'); setStatus('Wake lock re-acquired'); }
-      catch(e){ console.warn('Could not re-acquire wake lock', e); }
+  // when page becomes visible again, ensure pipVideo stream is running if timer is running
+  if(document.visibilityState === 'visible'){
+    if(isRunning){
+      // try to re-acquire wake lock if needed
+      if(!wakeLock && 'wakeLock' in navigator && typeof navigator.wakeLock.request === 'function'){
+        try { wakeLock = await navigator.wakeLock.request('screen'); console.log('Wake lock re-acquired'); }
+        catch(e){ console.warn('Could not re-acquire wake lock', e); }
+      } else {
+        attemptPlayWakeFallback();
+      }
+
+      // ensure pip stream is playing and if allowed by user, try to re-enter PiP
+      await startPipVideoStream().catch(()=>{});
+      if(sessionStorage.getItem('pip_allowed') === '1' && !document.pictureInPictureElement){
+        // some browsers allow requestPictureInPicture without a gesture if video is playing
+        try { await enterPictureInPicture(); } catch(e){ console.warn('Auto PiP re-entry blocked', e); }
+      }
     } else {
-      attemptPlayWakeFallback();
+      // if not running, ensure pipVideo not playing unnecessarily
+      // don't forcibly stop it — keep it ready for fast re-entry
     }
   }
 }
 
 async function releaseWakeLock(){
   try {
-    if(wakeLock && typeof wakeLock.release === 'function'){ await wakeLock.release(); wakeLock = null; setStatus('Wake lock released'); }
+    if(wakeLock && typeof wakeLock.release === 'function'){ await wakeLock.release(); wakeLock = null; console.log('Wake lock released'); }
   } catch(e){ console.warn('Error releasing wake lock', e); }
   try {
     if(wakelockFallbackVideo && !wakelockFallbackVideo.paused){ wakelockFallbackVideo.pause(); if(fallbackStreamForWake){ fallbackStreamForWake.getTracks().forEach(t => t.stop()); fallbackStreamForWake = null; } }
@@ -346,7 +290,7 @@ async function releaseWakeLock(){
 }
 
 /* ---------------------------
-   Picture-in-Picture via canvas -> video
+   Picture-in-Picture via canvas -> video (reliable & re-entrant)
    --------------------------- */
 let pipStream = null;
 let pipActive = false;
@@ -372,11 +316,16 @@ function renderPipCanvas(){
 async function startPipVideoStream(){
   try {
     if(!pipStream){
+      // create captureStream of canvas; keep it ready while timer runs
       pipStream = pipCanvas.captureStream ? pipCanvas.captureStream(15) : null;
-      if(!pipStream){ setStatus('captureStream not supported — PiP via canvas unavailable'); return false; }
+      if(!pipStream){ console.log('captureStream not supported — PiP via canvas unavailable'); return false; }
       pipVideo.srcObject = pipStream;
       pipVideo.muted = true; pipVideo.playsInline = true;
+      // play the video; required in many browsers before requestPictureInPicture
       await pipVideo.play();
+    } else {
+      // if stream exists but video paused, try to play it
+      if(pipVideo.paused) await pipVideo.play().catch(()=>{});
     }
     return true;
   } catch(e){
@@ -387,27 +336,38 @@ async function startPipVideoStream(){
 
 async function enterPictureInPicture(){
   if(!('requestPictureInPicture' in HTMLVideoElement.prototype) && !document.pictureInPictureEnabled){
-    setStatus('PiP not supported by this browser');
+    console.log('PiP not supported by this browser');
     return;
   }
   try {
     const ok = await startPipVideoStream();
-    if(!ok){ setStatus('Could not start PiP video stream'); return; }
+    if(!ok){ console.log('Could not start PiP video stream'); return; }
     if(document.pictureInPictureElement){
-      setStatus('Already in PiP');
+      console.log('Already in PiP');
       return;
     }
     if(pipVideo.requestPictureInPicture){
+      // request PiP — may require user gesture in some browsers; may succeed if pipVideo is playing
       await pipVideo.requestPictureInPicture();
       pipActive = true;
-      setStatus('Entered Picture-in-Picture');
-      pipVideo.addEventListener('leavepictureinpicture', () => { pipActive = false; setStatus('Exited PiP'); });
+      console.log('Entered Picture-in-Picture');
+      // when PiP is closed by user (e.g., user taps the PiP window), this event fires
+      pipVideo.addEventListener('leavepictureinpicture', () => {
+        pipActive = false;
+        console.log('Exited PiP');
+        // keep the pipVideo stream running and ready so user can re-enter quickly
+        // (do NOT remove pipVideo or stop the stream)
+      }, { once: false });
+      pipVideo.addEventListener('enterpictureinpicture', () => {
+        pipActive = true;
+        console.log('PiP entered (event)');
+      }, { once: false });
     } else {
-      setStatus('requestPictureInPicture not available on this element');
+      console.log('requestPictureInPicture not available on this element');
     }
   } catch(err){
     console.warn('PiP request failed:', err);
-    setStatus('PiP request failed or blocked (user gesture required or OS setting).');
+    console.log('PiP request failed or blocked (user gesture required or OS setting).');
   }
 }
 
@@ -416,50 +376,50 @@ async function tryAutoEnterPip(){
 }
 
 /* ---------------------------
-   Diagnostics helper
+   Visibility and focus handling
    --------------------------- */
-async function runDiagnostics(){
-  const lines = [];
-  lines.push('=== Diagnostics ===');
-  lines.push(`Secure context: ${window.isSecureContext ? 'yes' : 'no (needs HTTPS or localhost)'}`);
-  lines.push(`Navigator.wakeLock supported: ${!!(navigator.wakeLock && navigator.wakeLock.request)}`);
-  lines.push(`document.pictureInPictureEnabled: ${!!document.pictureInPictureEnabled}`);
-  lines.push(`HTMLVideoElement.requestPictureInPicture: ${!!HTMLVideoElement.prototype.requestPictureInPicture}`);
-  lines.push(`UserAgent: ${navigator.userAgent}`);
-  alert(lines.join('\n'));
-  console.log(lines.join('\n'));
-
-  try {
-    const c = document.createElement('canvas'); c.width=160; c.height=90;
-    const ctx = c.getContext('2d'); ctx.fillStyle='black'; ctx.fillRect(0,0,160,90);
-    const s = c.captureStream ? c.captureStream(12) : null;
-    if(!s){ alert('canvas.captureStream not supported'); return; }
-    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.srcObject = s;
-    v.style.position='fixed'; v.style.right='6px'; v.style.bottom='6px'; v.style.width='160px'; v.style.height='90px';
-    document.body.appendChild(v);
-    await v.play().catch(e => { console.warn('video.play() blocked:', e); alert('video.play() blocked (console for details)'); });
-    alert('Canvas stream video appended. You can try v.requestPictureInPicture() from console.');
-  } catch(e){
-    console.error('Diagnostics PiP check failed', e);
-    alert('Diagnostics PiP check failed (see console).');
+// When user returns to the page (visibilitychange to visible), try to re-start pip stream and re-enter PiP if user had previously enabled it.
+document.addEventListener('visibilitychange', async () => {
+  if(document.visibilityState === 'visible'){
+    // if timer is running, ensure pip video stream is playing
+    if(isRunning){
+      await startPipVideoStream().catch(()=>{});
+      // If user had tapped Enable PiP earlier, try to re-enter automatically
+      if(sessionStorage.getItem('pip_allowed') === '1' && !document.pictureInPictureElement){
+        try { await enterPictureInPicture(); } catch(e){ console.warn('Auto PiP re-entry blocked', e); }
+      }
+    }
+  } else {
+    // page hidden — nothing to do
   }
-}
+});
+
+// Also attempt re-entry on window focus (some browsers behave better with focus)
+window.addEventListener('focus', async () => {
+  if(isRunning && sessionStorage.getItem('pip_allowed') === '1' && !document.pictureInPictureElement){
+    try { await startPipVideoStream().catch(()=>{}); await enterPictureInPicture(); } catch(e){ /* ignore */ }
+  }
+});
 
 /* ---------------------------
    Wiring events
    --------------------------- */
 setBtn.addEventListener('click', () => { setInitialTime(); });
-startBtn.addEventListener('click', () => { ensureAudioContext(); attemptPlayWakeFallback(); startTimer(); });
+startBtn.addEventListener('click', () => {
+  ensureAudioContext();
+  attemptPlayWakeFallback();
+  startTimer();
+});
 pauseBtn.addEventListener('click', pauseTimer);
 resetBtn.addEventListener('click', resetTimer);
 saveBtn.addEventListener('click', saveSettings);
 clearBtn.addEventListener('click', clearSaved);
 wakeBtn.addEventListener('click', async () => { await requestWakeLockIfAvailable(); });
-pipBtn.addEventListener('click', async () => { sessionStorage.setItem('pip_allowed','1'); await enterPictureInPicture(); });
-diagBtn.addEventListener('click', runDiagnostics);
-
-clearStatusBtn.addEventListener('click', clearStatus);
-copyStatusBtn.addEventListener('click', copyStatusToClipboard);
+pipBtn.addEventListener('click', async () => {
+  // mark that user allowed PiP in this session / tab
+  sessionStorage.setItem('pip_allowed','1');
+  await enterPictureInPicture();
+});
 
 // keyboard space toggles start/pause
 document.addEventListener('keydown', (e) => {
@@ -474,26 +434,18 @@ document.addEventListener('keydown', (e) => {
    Initialization
    --------------------------- */
 function init(){
-  // load last saved settings and last status (if any)
   loadSettings();
   updateDisplay();
-  // restore last status if present
-  try {
-    const last = JSON.parse(localStorage.getItem(STORAGE_KEY + '_lastStatus') || 'null');
-    if(last && last.text) statusText.textContent = last.text;
-    else statusText.textContent = 'Ready';
-  } catch(e){ statusText.textContent = 'Ready'; }
   renderPipCanvas();
+  // keep updating pip canvas so PiP content stays fresh
   setInterval(() => { renderPipCanvas(); }, 500);
 }
 window.addEventListener('load', init);
 
 /* ---------------------------
-   Expose helpers for debugging
+   Expose minimal debug helpers
    --------------------------- */
-window._timerDebug = {
-  playBeep, requestWakeLockIfAvailable, releaseWakeLock, enterPictureInPicture, startPipVideoStream, setStatus
-};
+window._timerDebug = { playBeep, requestWakeLockIfAvailable, releaseWakeLock, enterPictureInPicture, startPipVideoStream };
 </script>
 </body>
 </html>
